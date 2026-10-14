@@ -1178,6 +1178,7 @@
     let filteredData = [];
     let statusFilter = 'all';
     let realtimeChannel = null;
+    let lastReceivedFromValue = '';
 
     let dateFilterFrom = null;
     let dateFilterTo = null;
@@ -1594,18 +1595,25 @@
             const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
             const from = receivedFromVal;
-            const to = 'Director ICT';
+// If the document originates within ICT, the destination is still the Director ICT
+// (the Director dispatches it onwards). Outside documents also land with the Director.
+const to = 'Director ICT';
+
+// Tag whether this came from inside ICT (so history wording is accurate)
+const isFromICT = ictOfficers.includes(from);
 
             const historyEntry = {
-                action: 'Received',
-                icon: '📥',
-                cssClass: 'action-received',
-                from: from,
-                to: to,
-                timestamp: date + ' ' + timeStr,
-                remarks: remarks || 'Document received from ' + from,
-                user: currentUser.username
-            };
+    action: isFromICT ? 'Sent to Director' : 'Received',
+    icon: isFromICT ? '📤' : '📥',
+    cssClass: isFromICT ? 'action-sent' : 'action-received',
+    from: from,
+    to: to,
+    timestamp: date + ' ' + timeStr,
+    remarks: remarks || (isFromICT
+        ? `Document sent from ${from} to Director ICT`
+        : `Document received from ${from}`),
+    user: currentUser.username
+};
 
             if (editIndex !== null) {
                 const existing = documents[editIndex];
@@ -2376,43 +2384,66 @@
     // FORM HELPERS
     // =============================================================
     function updateFields() {
-        const within = $('docWithinICT').value;
-        const list = within === 'Yes' ? ictOfficers : externalOfficers;
-        const container = $('receivedContainer');
+    const within = $('docWithinICT').value;           // 'Yes' or 'No'
+    const list = within === 'Yes' ? ictOfficers : externalOfficers;
+    const container = $('receivedContainer');
 
-        if (container.querySelector('input')) {
-            const sel = document.createElement('select');
-            sel.id = 'docReceivedFrom';
-            sel.className = 'docReceivedFrom';
-            list.forEach(item => {
-                const opt = document.createElement('option');
-                opt.value = item;
-                opt.textContent = item;
-                sel.appendChild(opt);
-            });
-            container.innerHTML = '';
-            container.appendChild(sel);
-        }
+    // Remember what the user had selected, so a toggle doesn't lose it
+    const currentSel = container.querySelector('select, input');
+    if (currentSel && currentSel.value) {
+        lastReceivedFromValue = currentSel.value;
     }
+
+    // Always rebuild the select from scratch (fixes the bug)
+    const sel = document.createElement('select');
+    sel.id = 'docReceivedFrom';
+    sel.className = 'docReceivedFrom';
+
+    list.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item;
+        opt.textContent = item;
+        sel.appendChild(opt);
+    });
+
+    // Restore the previous selection if it still exists in the new list
+    if (list.includes(lastReceivedFromValue)) {
+        sel.value = lastReceivedFromValue;
+    } else {
+        sel.value = list[0] || '';
+        lastReceivedFromValue = sel.value;
+    }
+
+    // Persist user's manual choice
+    sel.addEventListener('change', () => {
+        lastReceivedFromValue = sel.value;
+    });
+
+    container.innerHTML = '';
+    container.appendChild(sel);
+}
 
     function resetForm() {
-        $('docSubject').value = '';
-        $('docWithinICT').value = 'No';
-        const today = new Date().toISOString().split('T')[0];
-        $('docDate').value = today;
-        $('docDate').setAttribute('max', today);
-        $('docRemarks').value = '';
-        editIndex = null;
-        updateFields();
-        $('saveBtn').textContent = '💾 Save Record';
-    }
+    $('docSubject').value = '';
+    $('docWithinICT').value = 'No';
+    const today = new Date().toISOString().split('T')[0];
+    $('docDate').value = today;
+    $('docDate').setAttribute('max', today);
+    $('docRemarks').value = '';
+    editIndex = null;
+    lastReceivedFromValue = '';
+    updateFields();
+    $('saveBtn').textContent = '💾 Save Record';
+}
 
-    function initFormDefaults() {
-        const today = new Date().toISOString().split('T')[0];
-        $('docDate').value = today;
-        $('docDate').setAttribute('max', today);
-        updateFields();
-    }
+   function initFormDefaults() {
+    const today = new Date().toISOString().split('T')[0];
+    $('docDate').value = today;
+    $('docDate').setAttribute('max', today);
+    lastReceivedFromValue = '';
+    $('docWithinICT').value = 'No';
+    updateFields();
+}
 
     // =============================================================
     // TAB SWITCHING
