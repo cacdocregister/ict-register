@@ -888,12 +888,21 @@
                             <label>To Date</label>
                             <input type="date" id="filterToDate">
                         </div>
-                        <div class="filter-group" style="min-width:200px;">
-                            <label>Office / Unit / Officer</label>
-                            <select id="officeFilter" onchange="applyOfficeFilter()">
-                                <option value="all">All Offices / Units / Officers</option>
-                            </select>
-                        </div>
+                       <div class="filter-group" style="min-width:140px;">
+    <label>Direction</label>
+    <select id="officeDirection" onchange="applyOfficeFilter()">
+        <option value="any">↔ Any Direction</option>
+        <option value="sent_to">📤 Sent To</option>
+        <option value="received_from">📥 Received From</option>
+        <option value="touched">🔄 Touched (history)</option>
+    </select>
+</div>
+<div class="filter-group" style="min-width:200px;">
+    <label>Office / Unit / Officer</label>
+    <select id="officeFilter" onchange="applyOfficeFilter()">
+        <option value="all">All Offices / Units / Officers</option>
+    </select>
+</div>
                         <div class="filter-actions">
                             <button type="button" onclick="applyCustomDateFilter()" title="Apply the selected date range">✅ Apply</button>
                             <button type="button" class="secondary" onclick="clearAllFilters()" title="Reset all filters">🔄 Reset</button>
@@ -1548,17 +1557,46 @@
     }
 
     function applyOfficeFilter() {
-        officeFilterValue = $('officeFilter').value;
-        updateFilterChip();
-        render();
-        updateReportFilterInfo();
-    }
+    const dirEl = document.getElementById('officeDirection');
+    const direction = dirEl ? dirEl.value : 'any';
+    officeFilterValue = $('officeFilter').value;
+
+    // Reset to page 1 whenever the filter changes
+    currentPage = 1;
+
+    updateFilterChip(direction);
+    render();
+    updateReportFilterInfo(direction);
+}
 
     function documentMatchesOffice(doc, office) {
-        if (office === 'all') return true;
-        if (!doc.history) return false;
-        return doc.history.some(h => h.to === office);
+    // "All" means no filtering by office
+    if (office === 'all') return true;
+
+    // Determine current direction
+    const dirEl = document.getElementById('officeDirection');
+    const direction = dirEl ? dirEl.value : 'any';
+
+    // If "Touched (history)" → match if the office ever appeared
+    if (direction === 'touched') {
+        if (!doc.history || !Array.isArray(doc.history)) return false;
+        return doc.history.some(h => h.to === office || h.from === office);
     }
+
+    // Otherwise use the CURRENT location of the document
+    const currentTo   = doc.to   || '';
+    const currentFrom = doc.from || '';
+
+    if (direction === 'sent_to') {
+        return currentTo === office;
+    }
+    if (direction === 'received_from') {
+        return currentFrom === office;
+    }
+
+    // 'any' → match either current to or current from
+    return currentTo === office || currentFrom === office;
+}
 
     // =============================================================
     // SAVE DOCUMENT
@@ -2043,44 +2081,55 @@ const isFromICT = ictOfficers.includes(from);
     }
 
     function clearAllFilters() {
-        dateFilterFrom = null;
-        dateFilterTo = null;
-        activePresetName = 'All Time';
-        officeFilterValue = 'all';
-        $('datePreset').value = 'all';
-        $('officeFilter').value = 'all';
-        initDateFilterDefaults();
-        updateFilterChip();
-        render();
-        updateReportFilterInfo();
+    dateFilterFrom = null;
+    dateFilterTo = null;
+    activePresetName = 'All Time';
+    officeFilterValue = 'all';
+    $('datePreset').value = 'all';
+    $('officeFilter').value = 'all';
+    const dirEl = document.getElementById('officeDirection');
+    if (dirEl) dirEl.value = 'any';
+    initDateFilterDefaults();
+    updateFilterChip('any');
+    render();
+    updateReportFilterInfo('any');
+}
+
+  function updateFilterChip(direction) {
+    const chipContainer = $('activeFilterChip');
+    let html = '';
+
+    if (dateFilterFrom || dateFilterTo) {
+        const fromTxt = dateFilterFrom ? formatNiceDate(dateFilterFrom) : 'Beginning';
+        const toTxt = dateFilterTo ? formatNiceDate(dateFilterTo) : 'Today';
+        html += `
+            <span class="filter-chip">
+                📅 ${escapeHtml(activePresetName)}: ${fromTxt} → ${toTxt}
+                <button onclick="clearDateFilterOnly()" title="Clear date filter">×</button>
+            </span>
+        `;
     }
 
-    function updateFilterChip() {
-        const chipContainer = $('activeFilterChip');
-        let html = '';
-
-        if (dateFilterFrom || dateFilterTo) {
-            const fromTxt = dateFilterFrom ? formatNiceDate(dateFilterFrom) : 'Beginning';
-            const toTxt = dateFilterTo ? formatNiceDate(dateFilterTo) : 'Today';
-            html += `
-                <span class="filter-chip">
-                    📅 ${escapeHtml(activePresetName)}: ${fromTxt} → ${toTxt}
-                    <button onclick="clearDateFilterOnly()" title="Clear date filter">×</button>
-                </span>
-            `;
+    if (officeFilterValue && officeFilterValue !== 'all') {
+        if (direction === undefined) {
+            const dirEl = document.getElementById('officeDirection');
+            direction = dirEl ? dirEl.value : 'any';
         }
-
-        if (officeFilterValue && officeFilterValue !== 'all') {
-            html += `
-                <span class="filter-chip office-chip">
-                    🏢 ${escapeHtml(officeFilterValue)}
-                    <button onclick="clearOfficeFilterOnly()" title="Clear office filter">×</button>
-                </span>
-            `;
-        }
-
-        chipContainer.innerHTML = html;
+        const dirLabel =
+            direction === 'sent_to'         ? '📤 Sent To' :
+            direction === 'received_from'   ? '📥 Received From' :
+            direction === 'touched'         ? '🔄 Touched' :
+                                              '↔ Any';
+        html += `
+            <span class="filter-chip office-chip">
+                ${dirLabel}: ${escapeHtml(officeFilterValue)}
+                <button onclick="clearOfficeFilterOnly()" title="Clear office filter">×</button>
+            </span>
+        `;
     }
+
+    chipContainer.innerHTML = html;
+}
 
     function clearDateFilterOnly() {
         dateFilterFrom = null;
@@ -2093,13 +2142,15 @@ const isFromICT = ictOfficers.includes(from);
         updateReportFilterInfo();
     }
 
-    function clearOfficeFilterOnly() {
-        officeFilterValue = 'all';
-        $('officeFilter').value = 'all';
-        updateFilterChip();
-        render();
-        updateReportFilterInfo();
-    }
+   function clearOfficeFilterOnly() {
+    officeFilterValue = 'all';
+    $('officeFilter').value = 'all';
+    const dirEl = document.getElementById('officeDirection');
+    if (dirEl) dirEl.value = 'any';
+    updateFilterChip('any');
+    render();
+    updateReportFilterInfo('any');
+}
 
     function formatNiceDate(ymd) {
         if (!ymd) return '';
@@ -2116,25 +2167,39 @@ const isFromICT = ictOfficers.includes(from);
         return true;
     }
 
-    function updateReportFilterInfo() {
-        const el = $('reportFilterInfo');
-        if (!el) return;
+    function updateReportFilterInfo(direction) {
+    const el = $('reportFilterInfo');
+    if (!el) return;
 
-        let filterLine = 'All Time';
-        if (dateFilterFrom || dateFilterTo) {
-            const f = dateFilterFrom ? formatNiceDate(dateFilterFrom) : 'Beginning';
-            const t = dateFilterTo ? formatNiceDate(dateFilterTo) : 'Today';
-            filterLine = `${activePresetName}: ${f} → ${t}`;
-        }
-
-        const officeLine = (officeFilterValue === 'all') ? 'All Offices' : officeFilterValue;
-
-        el.innerHTML = `
-            <strong>📅 Filter:</strong> ${escapeHtml(filterLine)}<br>
-            <strong>🏢 Office:</strong> ${escapeHtml(officeLine)}
-        `;
+    let filterLine = 'All Time';
+    if (dateFilterFrom || dateFilterTo) {
+        const f = dateFilterFrom ? formatNiceDate(dateFilterFrom) : 'Beginning';
+        const t = dateFilterTo ? formatNiceDate(dateFilterTo) : 'Today';
+        filterLine = `${activePresetName}: ${f} → ${t}`;
     }
 
+    if (direction === undefined) {
+        const dirEl = document.getElementById('officeDirection');
+        direction = dirEl ? dirEl.value : 'any';
+    }
+
+    let officeLine;
+    if (officeFilterValue === 'all') {
+        officeLine = 'All Offices / Units / Officers';
+    } else {
+        const dirLabel =
+            direction === 'sent_to'         ? '📤 Sent To' :
+            direction === 'received_from'   ? '📥 Received From' :
+            direction === 'touched'         ? '🔄 Touched' :
+                                              '↔ Any Direction';
+        officeLine = `${dirLabel} — ${officeFilterValue}`;
+    }
+
+    el.innerHTML = `
+        <strong>📅 Filter:</strong> ${escapeHtml(filterLine)}<br>
+        <strong>🏢 Office:</strong> ${escapeHtml(officeLine)}
+    `;
+}
     // =============================================================
     // RENDER
     // =============================================================
@@ -2508,7 +2573,18 @@ const isFromICT = ictOfficers.includes(from);
             filterLine = `${activePresetName}: ${f} → ${t}`;
         }
 
-        const officeLine = (officeFilterValue === 'all') ? 'All Offices / Units / Officers' : officeFilterValue;
+        const officeLine = (officeFilterValue === 'all')
+    ? 'All Offices / Units / Officers'
+    : (() => {
+        const dirEl = document.getElementById('officeDirection');
+        const direction = dirEl ? dirEl.value : 'any';
+        const dirLabel =
+            direction === 'sent_to'         ? '📤 Sent To' :
+            direction === 'received_from'   ? '📥 Received From' :
+            direction === 'touched'         ? '🔄 Touched' :
+                                              '↔ Any Direction';
+        return `${dirLabel} — ${officeFilterValue}`;
+      })();
 
         let rows = '';
         const sorted = [...reportData].sort((a, b) => b.serial - a.serial);
@@ -2633,7 +2709,18 @@ const isFromICT = ictOfficers.includes(from);
             filterLine = `${activePresetName}: ${f} → ${t}`;
         }
 
-        const officeLine = (officeFilterValue === 'all') ? 'All Offices' : officeFilterValue;
+        const officeLine = (officeFilterValue === 'all')
+    ? 'All Offices'
+    : (() => {
+        const dirEl = document.getElementById('officeDirection');
+        const direction = dirEl ? dirEl.value : 'any';
+        const dirLabel =
+            direction === 'sent_to'         ? 'Sent To' :
+            direction === 'received_from'   ? 'Received From' :
+            direction === 'touched'         ? 'Touched' :
+                                              'Any Direction';
+        return `${dirLabel} — ${officeFilterValue}`;
+      })();
 
         const lines = [];
         lines.push('"ICT OFFICE DOCUMENT REGISTER"');
