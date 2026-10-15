@@ -2471,10 +2471,25 @@ const isFromICT = ictOfficers.includes(from);
     // =============================================================
     // REPORTS
     // =============================================================
-    function openReportMenu() {
-        updateReportFilterInfo();
-        $('reportBox').style.display = 'flex';
+   function openReportMenu() {
+    // Reset report filters to "All Time" every time it opens,
+    // so users always start from a full view.
+    if (dateFilterFrom || dateFilterTo) {
+        dateFilterFrom = null;
+        dateFilterTo = null;
+        activePresetName = 'All Time';
+        const presetEl = $('datePreset');
+        if (presetEl) presetEl.value = 'all';
+        const fromEl = $('filterFromDate');
+        const toEl = $('filterToDate');
+        if (fromEl) fromEl.value = '';
+        if (toEl) toEl.value = '';
     }
+    updateFilterChip();
+    render();
+    updateReportFilterInfo();
+    $('reportBox').style.display = 'flex';
+}
     function closeReportMenu() { $('reportBox').style.display = 'none'; }
 
     function generateReport() {
